@@ -124,8 +124,9 @@ const getFunctionName = (lineText: string): string | undefined => {
 
 
 export class PytestFixtureProvider implements vscode.CompletionItemProvider, vscode.DefinitionProvider {
-    readonly cache: { [Key: string]: Fixture[] } = {};
+    cache: { [Key: string]: Fixture[] } = {};
     private _activated = false;
+    private readonly cacheKey = "pytest_fixtures_data";
 
     get activated() {
         return this._activated;
@@ -137,16 +138,17 @@ export class PytestFixtureProvider implements vscode.CompletionItemProvider, vsc
      */
     activate(context: vscode.ExtensionContext) {
         this._activated = true;
+        this.cache = context.workspaceState.get<{ [Key: string]: Fixture[] }>(this.cacheKey, {});
         if (vscode.window.activeTextEditor) {
             log(`Active file is ${vscode.window.activeTextEditor.document.fileName}, loading fixtures...`);
-            this.cacheFixtures(vscode.window.activeTextEditor.document);
+            this.cacheFixtures(vscode.window.activeTextEditor.document, context);
         }
 
         context.subscriptions.push(... [
             vscode.window.onDidChangeActiveTextEditor(editor => {
                 if (editor) {
                     log(`Changed active file to ${editor.document.fileName}, loading fixtures...`);
-                    this.cacheFixtures(editor.document);
+                    this.cacheFixtures(editor.document, context);
                 }
             }),
             vscode.languages.registerCompletionItemProvider(PYTHON, this),
@@ -156,17 +158,19 @@ export class PytestFixtureProvider implements vscode.CompletionItemProvider, vsc
         const command = "pytest-fixtures.scanForFixtures";
         const commandHandler = (textEditor: vscode.TextEditor) => {
             log(`Active file is ${textEditor.document.fileName}, loading fixtures...`);
-            this.cacheFixtures(textEditor.document);
+            this.cacheFixtures(textEditor.document, context);
         };
         context.subscriptions.push(vscode.commands.registerTextEditorCommand(command, commandHandler));
     }
 
-    private cacheFixtures = async (document: vscode.TextDocument) => {
+    
+    private cacheFixtures = async (document: vscode.TextDocument, context: vscode.ExtensionContext) => {
         if (isPythonTestFile(document)) {
             log("File is a python test file, loading fixtures...");
             const filePath = document.uri.fsPath;
             const fixtures =  await getFixtures(document);
             this.cache[filePath] = fixtures;
+            await context.workspaceState.update(this.cacheKey, this.cache);
         }
     };
 
